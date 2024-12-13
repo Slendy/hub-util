@@ -1,0 +1,12 @@
+[package]
+name = "hub_util"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "hub_util"
+
+[lib]
+name = "hub_util"
+
+[dependencies]
