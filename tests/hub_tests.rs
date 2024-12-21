@@ -1,21 +1,19 @@
 ﻿extern crate hub_util;
 
 use hub_util::video_hub::VideoHub;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::thread::{self, sleep};
-use std::time::Duration;
+use std::thread::{self};
 
 #[test]
-fn socket_does_connect() {
+fn videohub_does_parse_hello_message() {
     thread::spawn(|| {
         let socket = TcpListener::bind("127.0.0.1:9990").expect("Could not start test TCP server");
         loop {
             let (mut client, _) = socket.accept().expect("Could not accept connection");
             client
                 .write(
-                    r#"
-PROTOCOL PREAMBLE:
+                    r#"PROTOCOL PREAMBLE:
 Version: 2.8
 
 VIDEOHUB DEVICE:
@@ -125,15 +123,15 @@ END PRELUDE:
                     .as_bytes(),
                 )
                 .expect("Failed to write initial message to socket");
-
-            loop {
-                // intentionally sleep so the socket doesn't close
-                sleep(Duration::from_millis(100));
-            }
+            // wait for client to close socket
+            let _ = client.read_to_end(&mut vec![]);
         }
     });
 
     let hub = VideoHub::new("127.0.0.1:9990".parse().expect("Failed to parse server IP"))
         .expect("failed to parse videohub");
+    assert_eq!(hub.input_count(), 20);
+    assert_eq!(hub.output_count(), 20);
+    assert_eq!(hub.model(), "Blackmagic Smart Videohub 20 x 20");
     println!("videohub {:?}", hub)
 }
