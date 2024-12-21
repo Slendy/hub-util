@@ -10,3 +10,4 @@ name = "hub_util"
 name = "hub_util"
 
 [dependencies]
+anyhow = "1.0.94"
