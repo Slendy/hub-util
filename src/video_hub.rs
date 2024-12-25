@@ -44,6 +44,7 @@ impl VideoHub {
     pub fn video_routes(&self) -> &Vec<usize> {
         &self.video_routes
     }
+    pub fn dump(&self) {}
 }
 
 #[derive(Debug)]
@@ -93,7 +94,6 @@ struct Route {
     destination: usize,
     source: usize,
 }
-
 
 impl Preamble {
     fn parse(lines: &Vec<&str>) -> anyhow::Result<HubMessage> {
@@ -158,7 +158,7 @@ impl LabelList {
                 Some(i) => i,
                 None => break,
             };
-            
+
             list.labels.push(Label {
                 name: line[(delim + 1)..].to_owned(),
                 index: line[..delim].parse()?,
@@ -219,7 +219,7 @@ impl HubMessage {
                     debug_println!("Failed to process message block ({}): {}", header, e);
                     continue;
                 }
-                Ok(msg) => parsed_messages.push(msg)
+                Ok(msg) => parsed_messages.push(msg),
             }
         }
         Ok(parsed_messages)
@@ -248,8 +248,7 @@ impl VideoHub {
         input
     }
     pub fn new(addr: SocketAddrV4) -> anyhow::Result<VideoHub> {
-        let stream =
-            TcpStream::connect_timeout(&SocketAddr::from(addr), Duration::from_secs(5))?;
+        let stream = TcpStream::connect_timeout(&SocketAddr::from(addr), Duration::from_secs(5))?;
         stream.set_read_timeout(Some(Duration::from_millis(200)))?;
 
         println!("Connected to VideoHub at {}", addr);
@@ -266,12 +265,18 @@ impl VideoHub {
 
         debug_println!("parsed blocks: {:?}", blocks);
 
-        if let Some(HubMessage::DeviceInfo(device_info)) = blocks.iter().find(|x| matches!(x, HubMessage::DeviceInfo(_))) {
+        if let Some(HubMessage::DeviceInfo(device_info)) = blocks
+            .iter()
+            .find(|x| matches!(x, HubMessage::DeviceInfo(_)))
+        {
             if device_info.present == "false" || device_info.present == "needs_update" {
                 debug_println!("Present device present: {}", device_info.present);
             }
             if device_info.input_count != device_info.output_count {
-                panic!("Input count and output count on video router are not equal: {} != {}", device_info.input_count, device_info.output_count);
+                panic!(
+                    "Input count and output count on video router are not equal: {} != {}",
+                    device_info.input_count, device_info.output_count
+                );
             }
         } else {
             return Err(anyhow::anyhow!("Failed to find device info block"));
@@ -286,11 +291,13 @@ impl VideoHub {
                     debug_println!("DeviceInfo: {:?}", device_info);
                     hub.input_count = device_info.input_count;
                     hub.output_count = device_info.output_count;
-                    
-                    hub.input_labels.resize(device_info.input_count, String::new());
-                    hub.output_labels.resize(device_info.input_count, String::new());
+
+                    hub.input_labels
+                        .resize(device_info.input_count, String::new());
+                    hub.output_labels
+                        .resize(device_info.input_count, String::new());
                     hub.video_routes.resize(device_info.input_count, 0);
-                    
+
                     hub.model = device_info.model;
                 }
                 HubMessage::InputLabels(input_labels) => {
