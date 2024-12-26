@@ -1,4 +1,4 @@
-use hub_util::{debug_println, video_hub::VideoHub};
+use hub_util::video_hub::VideoHub;
 
 use clap::{arg, command, Parser, Subcommand};
 
@@ -27,12 +27,12 @@ fn main() {
         Commands::Test {} => {}
         Commands::Dump { ip } => {
             let router = VideoHub::new(ip.parse().expect("Invalid IP address"));
-            match router {
+            let json = match router {
                 Err(e) => panic!("{e}"),
-                Ok(router) => router.dump(),
-            }
+                Ok(router) => router.dump_json().unwrap_or("".to_string()),
+            };
+            println!("{}", json);
         }
-        _ => {}
     }
 
     println!("{:?}", cli);

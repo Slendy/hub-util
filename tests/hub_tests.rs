@@ -4,11 +4,13 @@ use hub_util::video_hub::VideoHub;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread::{self};
+use serde_json::Value;
 
-#[test]
-fn videohub_does_parse_hello_message() {
-    thread::spawn(|| {
-        let socket = TcpListener::bind("127.0.0.1:9990").expect("Could not start test TCP server");
+fn spawn_test_server() -> i32 {
+    let random_port = rand::random_range(1024..9990);
+    let socket = TcpListener::bind(format!("127.0.0.1:{}", random_port)).expect("Could not start test TCP server");
+
+    thread::spawn(move || {
         loop {
             let (mut client, _) = socket.accept().expect("Could not accept connection");
             client
@@ -120,18 +122,39 @@ Take Mode: true
 
 END PRELUDE:
             "#
-                    .as_bytes(),
+                        .as_bytes(),
                 )
                 .expect("Failed to write initial message to socket");
             // wait for client to close socket
             let _ = client.read_to_end(&mut vec![]);
         }
     });
+    random_port
+}
 
-    let hub = VideoHub::new("127.0.0.1:9990".parse().expect("Failed to parse server IP"))
+#[test]
+fn videohub_does_parse_hello_message() {
+    let port = spawn_test_server();
+
+    let hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
         .expect("failed to parse videohub");
     assert_eq!(hub.input_count(), 20);
     assert_eq!(hub.output_count(), 20);
     assert_eq!(hub.model(), "Blackmagic Smart Videohub 20 x 20");
     println!("videohub {:?}", hub)
+}
+
+#[test]
+fn videohub_does_dump_json() {
+    let port = spawn_test_server();
+
+    let hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
+        .expect("failed to parse videohub");
+
+    let json = hub.dump_json().expect("failed to dump json");
+
+    let deserialized: Value = serde_json::from_str(&json).expect("failed to parse json");
+
+    assert_eq!(deserialized["name"], "Blackmagic Smart Videohub 20 x 20");
+    assert_eq!(deserialized["sources"].as_array().expect("failed to parse inputs").len(), 20);
 }

@@ -1,5 +1,5 @@
 ﻿use crate::debug_println;
-use std::io::{BufRead, BufReader, ErrorKind};
+use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Write};
 use std::net::{SocketAddr, SocketAddrV4, TcpStream};
 use std::time::Duration;
 
@@ -13,6 +13,8 @@ pub struct VideoHub {
     output_labels: Vec<String>,
     video_routes: Vec<usize>,
 }
+
+include!("hub_json.rs");
 
 impl VideoHub {
     fn default(tcp_stream: TcpStream) -> Self {
@@ -44,7 +46,6 @@ impl VideoHub {
     pub fn video_routes(&self) -> &Vec<usize> {
         &self.video_routes
     }
-    pub fn dump(&self) {}
 }
 
 #[derive(Debug)]
@@ -227,6 +228,10 @@ impl HubMessage {
 }
 
 impl VideoHub {
+    fn write(&self, msg: &str) -> anyhow::Result<()> {
+        let mut writer = BufWriter::new(&self.stream);
+        writer.write_all(msg.as_bytes()).with_context(|| "Failed to write message to stream")
+    }
     fn read_all(&self) -> String {
         let mut reader = BufReader::new(&self.stream);
         let mut input = String::new();
@@ -293,9 +298,9 @@ impl VideoHub {
                     hub.output_count = device_info.output_count;
 
                     hub.input_labels
-                        .resize(device_info.input_count, String::new());
+                        .resize(device_info.input_count, "".to_string());
                     hub.output_labels
-                        .resize(device_info.input_count, String::new());
+                        .resize(device_info.input_count, "".to_string());
                     hub.video_routes.resize(device_info.input_count, 0);
 
                     hub.model = device_info.model;
@@ -309,7 +314,7 @@ impl VideoHub {
                 HubMessage::OutputLabels(output_labels) => {
                     debug_println!("OutputLabels: {:?}", output_labels);
                     for label in output_labels.labels {
-                        hub.input_labels[label.index] = label.name;
+                        hub.output_labels[label.index] = label.name;
                     }
                 }
                 HubMessage::VideoRouting(routing) => {
