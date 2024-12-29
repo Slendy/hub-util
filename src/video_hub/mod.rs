@@ -1,4 +1,6 @@
-﻿use crate::debug_println;
+﻿use anyhow::anyhow;
+
+use crate::debug_println;
 use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Write};
 use std::net::{SocketAddr, SocketAddrV4, TcpStream};
 use std::time::Duration;
@@ -49,23 +51,25 @@ impl VideoHub {
 }
 
 #[derive(Debug)]
-enum HubMessage {
+pub enum HubMessage {
     Preamble(Preamble),
     DeviceInfo(DeviceInfo),
     InputLabels(LabelList),
     OutputLabels(LabelList),
     VideoRouting(VideoRouting),
     PreludeEnd,
+    Acknowledge,
+    NoAcknowledge,
     TODO,
 }
 
 #[derive(Debug, Default)]
-struct Preamble {
+pub struct Preamble {
     version: f32,
 }
 
 #[derive(Debug, Default)]
-struct DeviceInfo {
+pub struct DeviceInfo {
     present: String,
     model: String,
     uuid: String,
@@ -75,23 +79,23 @@ struct DeviceInfo {
 }
 
 #[derive(Debug, Default)]
-struct LabelList {
+pub struct LabelList {
     labels: Vec<Label>,
 }
 
 #[derive(Debug)]
-struct Label {
+pub struct Label {
     name: String,
     index: usize,
 }
 
 #[derive(Default, Debug)]
-struct VideoRouting {
+pub struct VideoRouting {
     routes: Vec<Route>,
 }
 
 #[derive(Debug)]
-struct Route {
+pub struct Route {
     destination: usize,
     source: usize,
 }
@@ -108,6 +112,16 @@ impl Preamble {
             }
         }
         Ok(HubMessage::Preamble(preamble))
+    }
+}
+
+#[test]
+fn test_preamble_parse() {
+    let msg = Preamble::parse(&vec!["Version: 2.7"]).expect("Failed to parse version");
+    if let HubMessage::Preamble(preamble) = msg {
+        assert_eq!(preamble.version, 2.7);
+    } else {
+        panic!("Parsed message is not preamble, {:?}", msg);
     }
 }
 
@@ -147,6 +161,27 @@ impl DeviceInfo {
     }
 }
 
+#[test]
+fn test_device_info_parse() {
+    let msg = DeviceInfo::parse(&vec![
+        "Device present: true",
+        "Model name: test",
+        "Video inputs: 37",
+        "Video outputs: 37",
+        "Unique ID: test",
+    ])
+    .expect("Failed to parse version info");
+    if let HubMessage::DeviceInfo(device_info) = msg {
+        assert_eq!(device_info.input_count, 37);
+        assert_eq!(device_info.output_count, 37);
+        assert_eq!(device_info.present, "true");
+        assert_eq!(device_info.uuid, "test");
+        assert_eq!(device_info.model, "test");
+    } else {
+        panic!("Parsed message is not device info, {:?}", msg);
+    }
+}
+
 impl LabelList {
     // Example format:
     // 0 Input 1
@@ -160,13 +195,59 @@ impl LabelList {
                 None => break,
             };
 
+            let index: i32 = line[..delim].parse()?;
+
+            if index < 0 {
+                continue;
+            }
+
             list.labels.push(Label {
                 name: line[(delim + 1)..].to_owned(),
-                index: line[..delim].parse()?,
+                index: index as usize,
             });
         }
         Ok(list)
     }
+    fn serialize(&self) -> String {
+        let mut serialized = String::new();
+        for label in &self.labels {
+            serialized += &format!("{} {}\n", label.index, label.name)
+        }
+        serialized
+    }
+}
+
+#[test]
+fn test_label_list_parse() {
+    let msg = LabelList::parse(&vec![
+        "-1 test 1",
+        "0 test 1",
+        "1 test 2",
+        "2 test 3",
+        "3 test 4",
+        "4 test 5",
+    ])
+    .expect("Failed to parse label list");
+    assert_eq!(msg.labels.len(), 5);
+    assert_eq!(msg.labels[0].name, "test 1");
+}
+
+#[test]
+fn test_label_list_serialize() {
+    let list = LabelList {
+        labels: vec![
+            Label {
+                index: 0,
+                name: "test 1".to_string(),
+            },
+            Label {
+                index: 15,
+                name: "test 16".to_string(),
+            },
+        ],
+    };
+    let serialized = list.serialize();
+    assert_eq!(serialized, "0 test 1\n15 test 16\n");
 }
 
 impl VideoRouting {
@@ -179,16 +260,70 @@ impl VideoRouting {
         for line in lines {
             let parts: Vec<&str> = line.split(" ").collect();
 
+            let src: i32 = parts[1].parse()?;
+            let dest: i32 = parts[0].parse()?;
+
+            if src < 0 || dest < 0 {
+                continue;
+            }
+
             routing.routes.push(Route {
-                source: parts[1].parse()?,
-                destination: parts[0].parse()?,
+                source: src as usize,
+                destination: dest as usize,
             });
         }
         Ok(HubMessage::VideoRouting(routing))
     }
+    fn serialize(&self) -> String {
+        let mut serialized = String::new();
+        for routing in &self.routes {
+            serialized += &format!("{} {}\n", routing.destination, routing.source);
+        }
+        serialized
+    }
+}
+
+#[test]
+fn test_video_routing_parse() {
+    let msg = VideoRouting::parse(&vec!["-1 -1", "0 0", "1 1", "2 2", "3 3", "4 4"])
+        .expect("Failed to parse label list");
+    if let HubMessage::VideoRouting(routing) = msg {
+        assert_eq!(routing.routes.len(), 5);
+        assert_eq!(routing.routes[0].destination, 0);
+    } else {
+        panic!("Parsed message is not video routing");
+    }
+}
+
+#[test]
+fn test_video_routing_serialize() {
+    let list = VideoRouting {
+        routes: vec![
+            Route {
+                source: 0,
+                destination: 0,
+            },
+            Route {
+                source: 1,
+                destination: 1,
+            },
+        ],
+    };
+    let serialized = list.serialize();
+    assert_eq!(serialized, "0 0\n1 1\n");
 }
 
 impl HubMessage {
+    pub fn get_header(&self) -> String {
+        match self {
+            HubMessage::Preamble(_) => "PROTOCOL PREAMBLE:".to_string(),
+            HubMessage::DeviceInfo(_) => "VIDEOHUB DEVICE:".to_string(),
+            HubMessage::InputLabels(_) => "INPUT LABELS:".to_string(),
+            HubMessage::OutputLabels(_) => "OUTPUT LABELS:".to_string(),
+            HubMessage::VideoRouting(_) => "VIDEO OUTPUT ROUTING:".to_string(),
+            _ => "TODO".to_string(),
+        }
+    }
     pub fn parse_blocks(msg: &str) -> anyhow::Result<Vec<HubMessage>> {
         let mut parsed_messages: Vec<HubMessage> = Vec::new();
         let blocks: Vec<&str> = msg.split("\n\n").collect();
@@ -210,6 +345,8 @@ impl HubMessage {
                 "VIDEO OUTPUT ROUTING:" => VideoRouting::parse(&lines),
                 "CONFIGURATION:" => Ok(HubMessage::TODO),
                 "END PRELUDE:" => Ok(HubMessage::PreludeEnd),
+                "ACK" => Ok(HubMessage::Acknowledge),
+                "NACK" => Ok(HubMessage::NoAcknowledge),
                 _ => {
                     debug_println!("Encountered unknown block type: {}", header);
                     continue;
@@ -230,7 +367,9 @@ impl HubMessage {
 impl VideoHub {
     fn write(&self, msg: &str) -> anyhow::Result<()> {
         let mut writer = BufWriter::new(&self.stream);
-        writer.write_all(msg.as_bytes()).with_context(|| "Failed to write message to stream")
+        writer
+            .write_all(msg.as_bytes())
+            .with_context(|| "Failed to write message to stream")
     }
     fn read_all(&self) -> String {
         let mut reader = BufReader::new(&self.stream);
@@ -251,6 +390,78 @@ impl VideoHub {
             }
         }
         input
+    }
+    pub fn send_message(&mut self, msg: HubMessage) -> anyhow::Result<()> {
+        let serialized = match &msg {
+            HubMessage::InputLabels(labels) => Ok(labels.serialize()),
+            HubMessage::OutputLabels(labels) => Ok(labels.serialize()),
+            HubMessage::VideoRouting(routes) => Ok(routes.serialize()),
+            _ => Err(anyhow!("Cannot serialize this type")),
+        }?;
+
+        let header = msg.get_header();
+
+        // header does not contain newline, and message must be terminated with 2 newlines
+        let serialized = format!("{}\n{}\n", header, serialized);
+
+        self.write(&serialized)?;
+
+        let response = self.read_all();
+
+        let blocks = HubMessage::parse_blocks(&response)?;
+
+        self.update(&blocks)?;
+
+        if blocks
+            .iter()
+            .any(|x| matches!(x, HubMessage::NoAcknowledge))
+        {
+            return Err(anyhow!("Server did not acknowledge request: {}", response));
+        }
+
+        Ok(())
+    }
+    pub fn update(&mut self, blocks: &Vec<HubMessage>) -> anyhow::Result<()> {
+        for block in blocks {
+            match block {
+                HubMessage::Preamble(preamble) => {
+                    debug_println!("Preamble: {:?}", preamble);
+                }
+                HubMessage::DeviceInfo(device_info) => {
+                    debug_println!("DeviceInfo: {:?}", device_info);
+                    self.input_count = device_info.input_count;
+                    self.output_count = device_info.output_count;
+
+                    self.input_labels
+                        .resize(device_info.input_count, "".to_string());
+                    self.output_labels
+                        .resize(device_info.input_count, "".to_string());
+                    self.video_routes.resize(device_info.input_count, 0);
+
+                    self.model = device_info.model.clone();
+                }
+                HubMessage::InputLabels(input_labels) => {
+                    debug_println!("InputLabels: {:?}", input_labels);
+                    for label in &input_labels.labels {
+                        self.input_labels[label.index] = label.name.clone();
+                    }
+                }
+                HubMessage::OutputLabels(output_labels) => {
+                    debug_println!("OutputLabels: {:?}", output_labels);
+                    for label in &output_labels.labels {
+                        self.output_labels[label.index] = label.name.clone();
+                    }
+                }
+                HubMessage::VideoRouting(routing) => {
+                    debug_println!("VideoRouting: {:?}", routing);
+                    for route in &routing.routes {
+                        self.video_routes[route.destination] = route.source;
+                    }
+                }
+                _ => continue,
+            }
+        }
+        Ok(())
     }
     pub fn new(addr: SocketAddrV4) -> anyhow::Result<VideoHub> {
         let stream = TcpStream::connect_timeout(&SocketAddr::from(addr), Duration::from_secs(5))?;
@@ -287,45 +498,8 @@ impl VideoHub {
             return Err(anyhow::anyhow!("Failed to find device info block"));
         }
 
-        for block in blocks {
-            match block {
-                HubMessage::Preamble(preamble) => {
-                    debug_println!("Preamble: {:?}", preamble);
-                }
-                HubMessage::DeviceInfo(device_info) => {
-                    debug_println!("DeviceInfo: {:?}", device_info);
-                    hub.input_count = device_info.input_count;
-                    hub.output_count = device_info.output_count;
+        hub.update(&blocks)?;
 
-                    hub.input_labels
-                        .resize(device_info.input_count, "".to_string());
-                    hub.output_labels
-                        .resize(device_info.input_count, "".to_string());
-                    hub.video_routes.resize(device_info.input_count, 0);
-
-                    hub.model = device_info.model;
-                }
-                HubMessage::InputLabels(input_labels) => {
-                    debug_println!("InputLabels: {:?}", input_labels);
-                    for label in input_labels.labels {
-                        hub.input_labels[label.index] = label.name;
-                    }
-                }
-                HubMessage::OutputLabels(output_labels) => {
-                    debug_println!("OutputLabels: {:?}", output_labels);
-                    for label in output_labels.labels {
-                        hub.output_labels[label.index] = label.name;
-                    }
-                }
-                HubMessage::VideoRouting(routing) => {
-                    debug_println!("VideoRouting: {:?}", routing);
-                    for route in routing.routes {
-                        hub.video_routes[route.destination] = route.source;
-                    }
-                }
-                _ => continue,
-            }
-        }
         Ok(hub)
     }
 }
