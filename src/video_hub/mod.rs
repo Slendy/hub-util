@@ -463,9 +463,11 @@ impl VideoHub {
 
         self.update(&blocks)?;
 
+        // Return an error if server returns 'NACK' or fails to send an 'ACK'
         if blocks
             .iter()
             .any(|x| matches!(x, HubMessage::NoAcknowledge))
+            || !blocks.iter().any(|x| matches!(x, HubMessage::Acknowledge))
         {
             return Err(anyhow!("Server did not acknowledge request: {}", response));
         }
@@ -529,8 +531,6 @@ impl VideoHub {
         if blocks.len() == 0 {
             return Err(anyhow::anyhow!("Failed to parse blocks from hello"));
         }
-
-        debug_println!("parsed blocks: {:?}", blocks);
 
         if let Some(HubMessage::DeviceInfo(device_info)) = blocks
             .iter()

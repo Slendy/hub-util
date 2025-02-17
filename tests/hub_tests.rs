@@ -1,10 +1,11 @@
 ﻿extern crate hub_util;
 
-use hub_util::video_hub::{VideoHub};
+use hub_util::video_hub::{VideoHub, VideoHubLabelType};
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread::{self};
+use std::time::Duration;
 
 fn spawn_test_server<F: FnOnce(&mut TcpStream) -> () + Send + Copy + 'static>(func: Option<F>) -> i32 {
     let random_port = rand::random_range(1024..9990);
@@ -13,6 +14,7 @@ fn spawn_test_server<F: FnOnce(&mut TcpStream) -> () + Send + Copy + 'static>(fu
     thread::spawn(move || {
         // loop {
             let (mut client, _) = socket.accept().expect("Could not accept connection");
+            client.set_read_timeout(Some(Duration::from_millis(200))).expect("Failed to set Unit Test server read timeout");
             client
                 .write(
                     r#"PROTOCOL PREAMBLE:
@@ -128,6 +130,7 @@ END PRELUDE:
 
             if let Some(ref server_func) = func {
                 server_func(&mut client);
+                println!("server func ran");
             }
 
             // wait for client to close socket
@@ -148,7 +151,6 @@ fn videohub_does_parse_hello_message() {
     assert_eq!(hub.input_count(), 20);
     assert_eq!(hub.output_count(), 20);
     assert_eq!(hub.model(), "Blackmagic Smart Videohub 20 x 20");
-    println!("videohub {:?}", hub)
 }
 
 #[test]
@@ -169,10 +171,14 @@ fn videohub_does_dump_json() {
 #[test]
 fn videohub_does_send_command() {
     let port = spawn_test_server(Some(|client: &mut TcpStream| {
-        client.read_to_end(&mut vec![]).expect("TODO: panic message");
+        let mut data: Vec<u8> = Vec::new();
+        let len = client.read_to_end(&mut data).unwrap_or_default();
+        assert_ne!(len, 0);
+        client.write("ACK".as_bytes()).expect("failed to send");
     }));
 
     let mut hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
         .expect("failed to parse videohub");
-    println!("{:?}", hub)
+
+    hub.set_label(VideoHubLabelType::Input, 0, "test label").expect("Failed to set label");
 }
