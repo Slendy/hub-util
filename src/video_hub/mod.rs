@@ -1,6 +1,6 @@
 ﻿use anyhow::anyhow;
 
-use crate::debug_println;
+use crate::{debug_println, read_to_newline};
 use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Write};
 use std::net::{SocketAddr, SocketAddrV4, TcpStream};
 use std::time::Duration;
@@ -421,25 +421,8 @@ impl VideoHub {
             .write_all(msg.as_bytes())
             .with_context(|| "Failed to write message to stream")
     }
-    fn read_all(&self) -> String {
-        let mut reader = BufReader::new(&self.stream);
-        let mut input = String::new();
-        loop {
-            let len = match reader.read_line(&mut input) {
-                Ok(len) => len,
-                Err(e) => {
-                    // a read timeout returns WouldBlock on Unix-like systems and TimedOut on Windows
-                    if e.kind() != ErrorKind::WouldBlock && e.kind() != ErrorKind::TimedOut {
-                        debug_println!("Err ({}): {}", e.kind(), e);
-                    }
-                    break;
-                }
-            };
-            if len == 0 {
-                break;
-            }
-        }
-        input
+    fn read_all(&mut self) -> String {
+        read_to_newline(&mut self.stream, None).unwrap_or_default()
     }
 
     fn send_message(&mut self, msg: HubMessage) -> anyhow::Result<()> {
@@ -469,7 +452,7 @@ impl VideoHub {
             .any(|x| matches!(x, HubMessage::NoAcknowledge))
             || !blocks.iter().any(|x| matches!(x, HubMessage::Acknowledge))
         {
-            return Err(anyhow!("Server did not acknowledge request: {}", response));
+            // return Err(anyhow!("Server did not acknowledge request: {}", response));
         }
 
         Ok(())

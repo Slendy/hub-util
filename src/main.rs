@@ -23,7 +23,6 @@ fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        // e.g. `$ cli completions bash`
         Commands::Test {} => {}
         Commands::Dump { ip } => {
             let router = VideoHub::new(ip.parse().expect("Invalid IP address"));

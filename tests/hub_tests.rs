@@ -6,6 +6,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread::{self};
 use std::time::Duration;
+use hub_util::read_to_newline;
 
 fn spawn_test_server<F: FnOnce(&mut TcpStream) -> () + Send + Copy + 'static>(func: Option<F>) -> i32 {
     let random_port = rand::random_range(1024..9990);
@@ -123,7 +124,8 @@ CONFIGURATION:
 Take Mode: true
 
 END PRELUDE:
-            "#
+
+"#
                         .as_bytes(),
                 )
                 .expect("Failed to write initial message to socket");
@@ -171,10 +173,12 @@ fn videohub_does_dump_json() {
 #[test]
 fn videohub_does_send_command() {
     let port = spawn_test_server(Some(|client: &mut TcpStream| {
-        let mut data: Vec<u8> = Vec::new();
-        let len = client.read_to_end(&mut data).unwrap_or_default();
-        assert_ne!(len, 0);
-        client.write("ACK".as_bytes()).expect("failed to send");
+        println!("serv: waiting for client command");
+        let cmd = read_to_newline(client, None).unwrap_or_default();
+        assert_ne!(cmd.len(), 0);
+        println!("serv: client command: {:?}", cmd);
+        client.write("ACK\n\n".as_bytes()).expect("failed to send");
+        println!("serv: wrote ack");
     }));
 
     let mut hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
