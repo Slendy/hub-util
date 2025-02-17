@@ -3,7 +3,7 @@ use anyhow::Context;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug)]
-struct VideoHubDump {
+pub struct VideoHubDump {
     time: u128,
     name: String,
     sources: Vec<VideoHubLabel>,
@@ -12,19 +12,42 @@ struct VideoHubDump {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct VideoHubLabel {
+pub struct VideoHubLabel {
     id: usize,
     name: String,
 }
 
+pub enum VideoHubLabelType {
+    Input,
+    Output,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
-struct VideoHubRoute {
+pub struct VideoHubRoute {
     destination_id: usize,
     source_id: usize,
 }
 
 impl VideoHub {
+    pub fn import_dump(&mut self, json: &str) -> anyhow::Result<()> {
+        let dump: VideoHubDump = serde_json::from_str(json)?;
+
+        if dump.sources.len() >= self.input_count() {
+            return Err(anyhow!("Dump contains {} inputs but VideoHub contains {} inputs", dump.sources.len(), self.input_count()));
+        }
+
+        if dump.destinations.len() >= self.output_count() {
+            return Err(anyhow!("Dump contains {} outputs but VideoHub contains {} outputs", dump.sources.len(), self.input_count()));
+        }
+
+        self.set_labels(VideoHubLabelType::Input, dump.sources).expect("TODO: panic message");
+        self.set_labels(VideoHubLabelType::Output, dump.destinations).expect("TODO: panic message");
+
+        self.set_routes(dump.routes).expect("TODO: panic message");
+
+        Ok(())
+    }
     pub fn dump_json(&self) -> anyhow::Result<String> {
         let dump = VideoHubDump {
             time: SystemTime::now()

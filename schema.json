@@ -1,0 +1,85 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "type": "object",
+    "properties": {
+        "time": {
+            "type": "number"
+        },
+        "name": {
+            "type": "string"
+        },
+        "sources": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "line1": {
+                        "type": "string"
+                    },
+                    "line2": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "number"
+                    }
+                },
+                "required": [
+                    "name",
+                    "id"
+                ]
+            }
+        },
+        "destinations": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string"
+                    },
+                    "line1": {
+                        "type": "string"
+                    },
+                    "line2": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "type": "number"
+                    }
+                },
+                "required": [
+                    "name",
+                    "id"
+                ]
+            }
+        },
+        "routes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "destinationId": {
+                        "type": "number"
+                    },
+                    "routeId": {
+                        "type": "number"
+                    }
+                },
+                "required": [
+                    "destinationId",
+                    "routeId"
+                ]
+            }
+        }
+    },
+    "required": [
+        "time",
+        "name",
+        "sources",
+        "destinations",
+        "routes"
+    ]
+}

@@ -48,10 +48,60 @@ impl VideoHub {
     pub fn video_routes(&self) -> &Vec<usize> {
         &self.video_routes
     }
+    pub fn set_label(
+        &mut self,
+        label_type: VideoHubLabelType,
+        index: usize,
+        label: &str,
+    ) -> anyhow::Result<()> {
+        let labels = LabelList {
+            labels: vec![Label {
+                index,
+                name: label.to_string(),
+            }],
+        };
+
+        match label_type {
+            VideoHubLabelType::Input => self.send_message(HubMessage::InputLabels(labels)),
+            VideoHubLabelType::Output => self.send_message(HubMessage::OutputLabels(labels)),
+        }
+    }
+    pub fn set_labels(
+        &mut self,
+        label_type: VideoHubLabelType,
+        labels: Vec<VideoHubLabel>,
+    ) -> anyhow::Result<()> {
+        let labels = LabelList {
+            labels: labels
+                .iter()
+                .map(|label| Label {
+                    name: label.name.to_owned(),
+                    index: label.id,
+                })
+                .collect(),
+        };
+        match label_type {
+            VideoHubLabelType::Input => self.send_message(HubMessage::InputLabels(labels)),
+            VideoHubLabelType::Output => self.send_message(HubMessage::OutputLabels(labels)),
+        }
+    }
+    pub fn set_routes(&mut self, routes: Vec<VideoHubRoute>) -> anyhow::Result<()> {
+        let routes = VideoRouting {
+            routes: routes
+                .iter()
+                .map(|route| Route {
+                    source: route.source_id,
+                    destination: route.destination_id,
+                })
+                .collect(),
+        };
+
+        self.send_message(HubMessage::VideoRouting(routes))
+    }
 }
 
 #[derive(Debug)]
-pub enum HubMessage {
+enum HubMessage {
     Preamble(Preamble),
     DeviceInfo(DeviceInfo),
     InputLabels(LabelList),
@@ -64,12 +114,12 @@ pub enum HubMessage {
 }
 
 #[derive(Debug, Default)]
-pub struct Preamble {
+struct Preamble {
     version: f32,
 }
 
 #[derive(Debug, Default)]
-pub struct DeviceInfo {
+struct DeviceInfo {
     present: String,
     model: String,
     uuid: String,
@@ -79,23 +129,23 @@ pub struct DeviceInfo {
 }
 
 #[derive(Debug, Default)]
-pub struct LabelList {
+struct LabelList {
     labels: Vec<Label>,
 }
 
 #[derive(Debug)]
-pub struct Label {
+struct Label {
     name: String,
     index: usize,
 }
 
 #[derive(Default, Debug)]
-pub struct VideoRouting {
+struct VideoRouting {
     routes: Vec<Route>,
 }
 
 #[derive(Debug)]
-pub struct Route {
+struct Route {
     destination: usize,
     source: usize,
 }
@@ -391,7 +441,8 @@ impl VideoHub {
         }
         input
     }
-    pub fn send_message(&mut self, msg: HubMessage) -> anyhow::Result<()> {
+
+    fn send_message(&mut self, msg: HubMessage) -> anyhow::Result<()> {
         let serialized = match &msg {
             HubMessage::InputLabels(labels) => Ok(labels.serialize()),
             HubMessage::OutputLabels(labels) => Ok(labels.serialize()),
@@ -421,7 +472,7 @@ impl VideoHub {
 
         Ok(())
     }
-    pub fn update(&mut self, blocks: &Vec<HubMessage>) -> anyhow::Result<()> {
+    fn update(&mut self, blocks: &Vec<HubMessage>) -> anyhow::Result<()> {
         for block in blocks {
             match block {
                 HubMessage::Preamble(preamble) => {

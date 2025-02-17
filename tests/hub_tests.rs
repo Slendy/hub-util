@@ -1,17 +1,17 @@
 ﻿extern crate hub_util;
 
-use hub_util::video_hub::VideoHub;
-use std::io::{Read, Write};
-use std::net::TcpListener;
-use std::thread::{self};
+use hub_util::video_hub::{VideoHub};
 use serde_json::Value;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::thread::{self};
 
-fn spawn_test_server() -> i32 {
+fn spawn_test_server<F: FnOnce(&mut TcpStream) -> () + Send + Copy + 'static>(func: Option<F>) -> i32 {
     let random_port = rand::random_range(1024..9990);
     let socket = TcpListener::bind(format!("127.0.0.1:{}", random_port)).expect("Could not start test TCP server");
 
     thread::spawn(move || {
-        loop {
+        // loop {
             let (mut client, _) = socket.accept().expect("Could not accept connection");
             client
                 .write(
@@ -30,48 +30,48 @@ Video monitoring outputs: 0
 Serial ports: 0
 
 INPUT LABELS:
-0 CG1
-1 CG1 Alpha
-2 Resi 1
-3 Resi 2
-4 Grass Valley 1
-5 Grass Valley 2
-6 7
-7 8
-8 9
-9 West Live
-10 Livestream PGM
-11 12
-12 13
-13 14
-14 15
-15 15
-16 17
-17 18
-18 19
-19 20
+0 Input 1
+1 Input 2
+2 Input 3
+3 Input 4
+4 Input 5
+5 Input 6
+6 Input 7
+7 Input 8
+8 Input 9
+9 Input 10
+10 Input 11
+11 Input 12
+12 Input 13
+13 Input 14
+14 Input 15
+15 Input 15
+16 Input 17
+17 Input 18
+18 Input 19
+19 Input 20
 
 OUTPUT LABELS:
-0 ATEM 1 - CG
-1 ATEM 2
-2 ATEM 3 - Resi 1
-3 ATEM 4 - Resi - 2
-4 ATEM 5 - Grass Valley 1
-5 ATEM 6 - Grass Valley 2
-6 ATEM 7
-7 ATEM 8
-8 ATEM 9
-9 ATEM 10 - West Live
-10 11
-11 12
-12 13
-13 14
-14 15
-15 16
-16 17
-17 18
-18 19
-19 Audio Monitor
+0 Output 1
+1 Output 2
+2 Output 3
+3 Output 4
+4 Output 5
+5 Output 6
+6 Output 7
+7 Output 8
+8 Output 9
+9 Output 10
+10 Output 11
+11 Output 12
+12 Output 13
+13 Output 14
+14 Output 15
+15 Output 16
+16 Output 17
+17 Output 18
+18 Output 19
+19 Output 20
 
 VIDEO OUTPUT LOCKS:
 0 U
@@ -101,21 +101,21 @@ VIDEO OUTPUT ROUTING:
 2 2
 3 3
 4 4
-5 9
-6 4
-7 8
-8 9
+5 5
+6 6
+7 7
+8 8
 9 9
-10 9
-11 5
-12 1
-13 17
-14 16
-15 5
-16 10
-17 14
-18 8
-19 10
+10 10
+11 11
+12 12
+13 13
+14 14
+15 15
+16 16
+17 17
+18 18
+19 19
 
 CONFIGURATION:
 Take Mode: true
@@ -125,16 +125,23 @@ END PRELUDE:
                         .as_bytes(),
                 )
                 .expect("Failed to write initial message to socket");
+
+            if let Some(ref server_func) = func {
+                server_func(&mut client);
+            }
+
             // wait for client to close socket
             let _ = client.read_to_end(&mut vec![]);
-        }
+        // }
     });
     random_port
 }
 
+const EMPTY_FUNC: Option<fn(&mut TcpStream)> = None::<fn(&mut TcpStream) -> ()>;
+
 #[test]
 fn videohub_does_parse_hello_message() {
-    let port = spawn_test_server();
+    let port = spawn_test_server(EMPTY_FUNC);
 
     let hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
         .expect("failed to parse videohub");
@@ -146,7 +153,7 @@ fn videohub_does_parse_hello_message() {
 
 #[test]
 fn videohub_does_dump_json() {
-    let port = spawn_test_server();
+    let port = spawn_test_server(EMPTY_FUNC);
 
     let hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
         .expect("failed to parse videohub");
@@ -157,4 +164,15 @@ fn videohub_does_dump_json() {
 
     assert_eq!(deserialized["name"], "Blackmagic Smart Videohub 20 x 20");
     assert_eq!(deserialized["sources"].as_array().expect("failed to parse inputs").len(), 20);
+}
+
+#[test]
+fn videohub_does_send_command() {
+    let port = spawn_test_server(Some(|client: &mut TcpStream| {
+        client.read_to_end(&mut vec![]).expect("TODO: panic message");
+    }));
+
+    let mut hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
+        .expect("failed to parse videohub");
+    println!("{:?}", hub)
 }
