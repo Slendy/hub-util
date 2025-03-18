@@ -33,18 +33,18 @@ impl VideoHub {
     pub fn import_dump(&mut self, json: &str) -> anyhow::Result<()> {
         let dump: VideoHubDump = serde_json::from_str(json)?;
 
-        if dump.sources.len() >= self.input_count() {
+        if dump.sources.len() > self.input_count() {
             return Err(anyhow!("Dump contains {} inputs but VideoHub contains {} inputs", dump.sources.len(), self.input_count()));
         }
 
-        if dump.destinations.len() >= self.output_count() {
+        if dump.destinations.len() > self.output_count() {
             return Err(anyhow!("Dump contains {} outputs but VideoHub contains {} outputs", dump.sources.len(), self.input_count()));
         }
 
-        self.set_labels(VideoHubLabelType::Input, dump.sources).expect("TODO: panic message");
-        self.set_labels(VideoHubLabelType::Output, dump.destinations).expect("TODO: panic message");
+        self.set_labels(VideoHubLabelType::Input, dump.sources).expect("Failed to set input labels on Videohub");
+        self.set_labels(VideoHubLabelType::Output, dump.destinations).expect("Failed to set output labels on Videohub");
 
-        self.set_routes(dump.routes).expect("TODO: panic message");
+        self.set_routes(dump.routes).expect("Failed to set routes on Videohub");
 
         Ok(())
     }

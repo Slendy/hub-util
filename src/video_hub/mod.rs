@@ -1,7 +1,7 @@
-﻿use anyhow::anyhow;
+﻿use std::io::{BufWriter, Write};
+use anyhow::anyhow;
 
 use crate::{debug_println, read_to_newline};
-use std::io::{BufRead, BufReader, BufWriter, ErrorKind, Write};
 use std::net::{SocketAddr, SocketAddrV4, TcpStream};
 use std::time::Duration;
 

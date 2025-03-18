@@ -1,12 +1,12 @@
 ﻿extern crate hub_util;
 
+use hub_util::{debug_println, read_to_newline};
 use hub_util::video_hub::{VideoHub, VideoHubLabelType};
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::thread::{self};
 use std::time::Duration;
-use hub_util::read_to_newline;
 
 fn spawn_test_server<F: FnOnce(&mut TcpStream) -> () + Send + Copy + 'static>(func: Option<F>) -> i32 {
     let random_port = rand::random_range(1024..9990);
@@ -168,6 +168,53 @@ fn videohub_does_dump_json() {
 
     assert_eq!(deserialized["name"], "Blackmagic Smart Videohub 20 x 20");
     assert_eq!(deserialized["sources"].as_array().expect("failed to parse inputs").len(), 20);
+}
+
+#[test]
+fn videohub_does_not_import_broken_json() {
+    let port = spawn_test_server(EMPTY_FUNC);
+
+    let mut hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
+        .expect("failed to parse videohub");
+
+    let json = r#"{
+    "timestamp": 1741618011000,
+    "sources": [],
+    "destinations": [],
+    "routes": []
+}"#;
+
+    let result = hub.import_dump(json);
+    assert_eq!(result.is_ok(), false);
+}
+
+#[test]
+fn videohub_does_import_json() {
+    let port = spawn_test_server(Some(|client: &mut TcpStream| {
+        loop {
+            println!("serv: waiting for client command");
+            let cmd = read_to_newline(client, None).unwrap_or_default();
+            assert_ne!(cmd.len(), 0);
+            println!("serv: client command: {:?}", cmd);
+            client.write("ACK\n\n".as_bytes()).expect("failed to send");
+            println!("serv: wrote ack");
+            if cmd.contains("LABELS") || cmd.contains("ROUTING") {
+                // server will send back changes for clients to update
+                client.write(cmd.as_bytes()).expect("failed to send");
+            }
+        }
+    }));
+
+    let mut hub = VideoHub::new(format!("127.0.0.1:{}", &port).parse().expect("Failed to parse server IP"))
+        .expect("failed to parse videohub");
+
+    let json = r#"{"time":1742323854265,"name":"Blackmagic Smart Videohub 20 x 20","sources":[{"id":0,"name":"Src 1"},{"id":1,"name":"Src 2"},{"id":2,"name":"Src 3"},{"id":3,"name":"Src 4"},{"id":4,"name":"Src 5"},{"id":5,"name":"Src 6"},{"id":6,"name":"Src 7"},{"id":7,"name":"Src 8"},{"id":8,"name":"Src 9"},{"id":9,"name":"Src 10"},{"id":10,"name":"Src 11"},{"id":11,"name":"Src 12"},{"id":12,"name":"Src 13"},{"id":13,"name":"Src 14"},{"id":14,"name":"Src 15"},{"id":15,"name":"Src 15"},{"id":16,"name":"Src 17"},{"id":17,"name":"Src 18"},{"id":18,"name":"Src 19"},{"id":19,"name":"Src 20"}],"destinations":[{"id":0,"name":"Dest 1"},{"id":1,"name":"Dest 2"},{"id":2,"name":"Dest 3"},{"id":3,"name":"Dest 4"},{"id":4,"name":"Dest 5"},{"id":5,"name":"Dest 6"},{"id":6,"name":"Dest 7"},{"id":7,"name":"Dest 8"},{"id":8,"name":"Dest 9"},{"id":9,"name":"Dest 10"},{"id":10,"name":"Dest 11"},{"id":11,"name":"Dest 12"},{"id":12,"name":"Dest 13"},{"id":13,"name":"Dest 14"},{"id":14,"name":"Dest 15"},{"id":15,"name":"Dest 16"},{"id":16,"name":"Dest 17"},{"id":17,"name":"Dest 18"},{"id":18,"name":"Dest 19"},{"id":19,"name":"Dest 20"}],"routes":[{"destinationId":0,"sourceId":0},{"destinationId":1,"sourceId":1},{"destinationId":2,"sourceId":2},{"destinationId":3,"sourceId":3},{"destinationId":4,"sourceId":4},{"destinationId":5,"sourceId":5},{"destinationId":6,"sourceId":6},{"destinationId":7,"sourceId":7},{"destinationId":8,"sourceId":8},{"destinationId":9,"sourceId":9},{"destinationId":10,"sourceId":10},{"destinationId":11,"sourceId":11},{"destinationId":12,"sourceId":12},{"destinationId":13,"sourceId":13},{"destinationId":14,"sourceId":14},{"destinationId":15,"sourceId":15},{"destinationId":16,"sourceId":16},{"destinationId":17,"sourceId":17},{"destinationId":18,"sourceId":18},{"destinationId":19,"sourceId":19}]}"#;
+
+    let result = hub.import_dump(json);
+
+    assert_eq!(result.is_ok(), true);
+    assert_eq!(hub.input_labels()[0], "Src 1");
+    assert_eq!(hub.output_labels()[0], "Dest 1");
 }
 
 #[test]
