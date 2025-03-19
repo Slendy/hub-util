@@ -1,7 +1,7 @@
 ﻿extern crate hub_util;
 
-use hub_util::{debug_println, read_to_newline};
 use hub_util::video_hub::{VideoHub, VideoHubLabelType};
+use hub_util::read_to_newline;
 use serde_json::Value;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
